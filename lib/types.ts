@@ -19,7 +19,8 @@ export interface LinkItem {
 export interface TodoItem {
   id: string;
   title: string;
-  course: string;
+  courseId?: string; // links back to a real course, when picked
+  courseLabel: string; // free-text label shown on the card either way
   description: string;
   status: 'ongoing' | 'missed' | 'completed';
   hasDeadline: boolean;
@@ -35,7 +36,6 @@ export interface CourseItem {
   profilePhoto?: string | null;
   files: FileItem[];
   links: LinkItem[];
-  todos: TodoItem[];
 }
 
 export interface CalendarEvent {
@@ -46,6 +46,7 @@ export interface CalendarEvent {
   date: string; // 'YYYY-MM-DD'
   hasTime: boolean;
   time?: string; // 'HH:mm'
+  courseId?: string; // optional link to a course
 }
 
 export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
@@ -55,11 +56,12 @@ export interface ScheduleItem {
   id: string;
   courseId?: string; // link back to the source course, when picked from Courses
   code: string;
+  title: string;
   instructor?: string;
   room?: string;
   days: Weekday[];
-  startTime: string; // 'HH:mm'
-  endTime: string; // 'HH:mm'
+  startTime: string; // full ISO datetime string — only the time-of-day is used
+  endTime: string; // full ISO datetime string
   color: string;
 }
 

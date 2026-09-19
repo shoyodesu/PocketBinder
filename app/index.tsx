@@ -3,28 +3,44 @@ import * as ImagePicker from 'expo-image-picker';
 import { useMemo, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { formatDateLabel } from '../components/CustomPickers';
-import { IdEditModal } from '../components/Modals';
-import { Card, EmptyState, IconButton, Pill, ScreenHeader, SectionLabel } from '../components/UI';
-import { useLiveData } from '../lib/hooks';
-import { CoursesStore, EventsStore, SettingsStore, StudentIdStore } from '../lib/storage';
+import { ConfirmModal, IdEditModal, TodoFormModal } from '../components/Modals';
+import { Card, EmptyState, FAB, IconButton, Pill, ScreenHeader, SectionLabel, SelectField } from '../components/UI';
+import { useLiveData, useSettings } from '../lib/hooks';
+import { CoursesStore, StudentIdStore, TodosStore } from '../lib/storage';
 import { COLORS, FONT, RADIUS, SPACING, STICKER_SHADOW } from '../lib/theme';
-import { StudentIdData, UserSettings } from '../lib/types';
+import { CourseItem, StudentIdData, TodoItem } from '../lib/types';
 
 const EMPTY_ID: StudentIdData = { name: '', birthday: '', school: '', year: '', color: COLORS.primary, photo: null };
-const EMPTY_SETTINGS: UserSettings = { username: 'Student', accentColor: COLORS.primary, weekStartsMonday: false };
+
+const STATUS_COLOR: Record<TodoItem['status'], string> = {
+  ongoing: COLORS.accentBlue,
+  completed: COLORS.accentGreen,
+  missed: COLORS.danger,
+};
+const STATUS_LABEL: Record<TodoItem['status'], string> = {
+  ongoing: 'Upcoming',
+  completed: 'Completed',
+  missed: 'Missed',
+};
+
+type Filter = 'all' | TodoItem['status'];
 
 export default function HomeScreen() {
   const { data: studentId, reload: reloadId } = useLiveData('studentId', StudentIdStore.get, EMPTY_ID);
-  const { data: settings } = useLiveData('settings', SettingsStore.get, EMPTY_SETTINGS);
-  const { data: courses } = useLiveData('courses', CoursesStore.getAll, []);
-  const { data: events } = useLiveData('events', EventsStore.getAll, []);
+  const { data: settings } = useSettings();
+  const { data: courses } = useLiveData('courses', CoursesStore.getAll, [] as CourseItem[]);
+  const { data: todos, reload: reloadTodos } = useLiveData('todos', TodosStore.getAll, [] as TodoItem[]);
+
   const [editOpen, setEditOpen] = useState(false);
+  const [filter, setFilter] = useState<Filter>('all');
+  const [todoModal, setTodoModal] = useState<{ open: boolean; item: TodoItem | null }>({ open: false, item: null });
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   async function pickPhoto() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) return;
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       quality: 0.7,
       allowsEditing: true,
       aspect: [1, 1],
@@ -36,22 +52,36 @@ export default function HomeScreen() {
     }
   }
 
-  const upcoming = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    const fromEvents = events
-      .filter((e) => e.date >= today)
-      .map((e) => ({ id: e.id, title: e.title, date: e.date, sub: e.category }));
-    const fromTodos = courses.flatMap((c) =>
-      c.todos
-        .filter((t) => t.hasDeadline && t.deadlineDate && t.deadlineDate >= today && t.status !== 'completed')
-        .map((t) => ({ id: t.id, title: t.title, date: t.deadlineDate as string, sub: c.code }))
-    );
-    return [...fromEvents, ...fromTodos].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);
-  }, [events, courses]);
+  const visibleTodos = useMemo(() => {
+    const list = filter === 'all' ? todos : todos.filter((t) => t.status === filter);
+    return [...list].sort((a, b) => {
+      if (a.hasDeadline && b.hasDeadline) return (a.deadlineDate || '').localeCompare(b.deadlineDate || '');
+      if (a.hasDeadline) return -1;
+      if (b.hasDeadline) return 1;
+      return 0;
+    });
+  }, [todos, filter]);
+
+  async function saveTodo(data: Omit<TodoItem, 'id'>) {
+    if (todoModal.item) {
+      await TodosStore.update(todoModal.item.id, data);
+    } else {
+      await TodosStore.add(data);
+    }
+    setTodoModal({ open: false, item: null });
+    reloadTodos();
+  }
+
+  async function handleDelete() {
+    if (deleteId) await TodosStore.remove(deleteId);
+    setDeleteId(null);
+    reloadTodos();
+  }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
-      <ScreenHeader title={`Hi, ${settings.username}`} subtitle="Here's your PocketBinder overview" />
+    <View style={styles.container}>
+    <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScreenHeader title={`Hi, ${settings.username}!`} subtitle="Here's your PocketBinder overview" />
 
       <View style={{ paddingHorizontal: SPACING.lg }}>
         <TouchableOpacity activeOpacity={0.9} onPress={() => setEditOpen(true)}>
@@ -77,37 +107,82 @@ export default function HomeScreen() {
             )}
               </View>
             </View>
+            
           </View>
         </TouchableOpacity>
 
-        <SectionLabel>UPCOMING</SectionLabel>
-        <Card>
-          {upcoming.length === 0 ? (
-            <EmptyState icon="checkmark-done-circle-outline" text="Nothing coming up. You're all caught up!" />
-          ) : (
-            upcoming.map((item, i) => (
-              <View key={item.id} style={[styles.upcomingRow, i > 0 && styles.upcomingDivider]}>
+        <View style={styles.sectionHeader}>
+          <SectionLabel>TO-DO</SectionLabel>
+          <SelectField
+            label="Filter"
+            value={filter}
+            placeholder="All"
+            compact
+            options={[
+              { label: 'All', value: 'all' },
+              { label: 'Upcoming', value: 'ongoing' },
+              { label: 'Missed', value: 'missed' },
+              { label: 'Completed', value: 'completed' },
+            ]}
+            onSelect={(v) => setFilter(v as Filter)}
+          />
+        </View>
+
+
+        {visibleTodos.length === 0 ? (
+          <Card>
+            <EmptyState icon="checkmark-done-circle-outline" text="Nothing here. You're all caught up!" />
+          </Card>
+        ) : (
+          visibleTodos.map((t) => (
+            <Card key={t.id} style={{ marginBottom: SPACING.sm }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={FONT.body}>{item.title}</Text>
-                  <Text style={FONT.bodyMuted}>{item.sub}</Text>
+                  <Text style={FONT.h3}>{t.title}</Text>
+                  {!!t.courseLabel && <Text style={FONT.bodyMuted}>{t.courseLabel}</Text>}
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                    <Pill label={STATUS_LABEL[t.status]} color={STATUS_COLOR[t.status]} />
+                    {t.hasDeadline && t.deadlineDate && <Pill label={formatDateLabel(t.deadlineDate)} color={COLORS.secondary} />}
+                  </View>
                 </View>
-                <Pill label={formatDateLabel(item.date)} color={COLORS.secondary} />
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <IconButton name="create-outline" size={15} onPress={() => setTodoModal({ open: true, item: t })} />
+                  <IconButton name="trash-outline" size={15} color={COLORS.danger} bg={COLORS.dangerSoft} onPress={() => setDeleteId(t.id)} />
+                </View>
               </View>
-            ))
-          )}
-        </Card>
+            </Card>
+          ))
+        )}
       </View>
+    </ScrollView>
+
+      <FAB onPress={() => setTodoModal({ open: true, item: null })} />
 
       <IdEditModal
         visible={editOpen}
         initial={studentId}
+        weekStartsMonday={settings.weekStartsMonday}
         onClose={() => setEditOpen(false)}
         onSave={async (data) => {
           await StudentIdStore.save(data);
           setEditOpen(false);
         }}
       />
-    </ScrollView>
+      <TodoFormModal
+        visible={todoModal.open}
+        initial={todoModal.item}
+        courseOptions={courses}
+        onClose={() => setTodoModal({ open: false, item: null })}
+        onSave={saveTodo}
+      />
+      <ConfirmModal
+        visible={!!deleteId}
+        title="Delete to-do?"
+        message="This can't be undone."
+        onCancel={() => setDeleteId(null)}
+        onConfirm={handleDelete}
+      />
+    </View>
   );
 }
 
@@ -127,8 +202,8 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.85)',
     fontWeight: '900',
     fontSize: 14,
+    marginLeft: 5,
     letterSpacing: 1,
-    marginLeft: 10,
   },
   idCardBody: {
     flexDirection: 'row',
@@ -146,7 +221,12 @@ const styles = StyleSheet.create({
   avatarImg: { width: 110, height: 110 },
   idName: { color: '#FFF', fontSize: 19, fontWeight: '800' },
   idSub: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: '600', marginTop: 2 },
-  idBirthday: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '600', marginTop: 2},
-  upcomingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
-  upcomingDivider: { borderTopWidth: 1, borderTopColor: COLORS.divider },
+  idBirthday: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '600', marginTop: 2 },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.sm,
+  },
 });

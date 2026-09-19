@@ -1,5 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as IntentLauncher from 'expo-intent-launcher';
 import * as Sharing from 'expo-sharing';
 import { Alert, Platform } from 'react-native';
 import { FileItem } from './types';
@@ -8,64 +9,101 @@ function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-// Copies the picked file into the app's own document directory (not just the
-// transient cache dir) so it's still there next time the app opens, then
-// keeps the real mimeType around — that mimeType is what was missing before
-// and is required for Android to know which app can open the file.
+// Convert ArrayBuffer to Base64 in JS engine (no native module read calls)
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
 export async function pickAndStoreFile(): Promise<FileItem | null> {
-  const result = await DocumentPicker.getDocumentAsync({
-    type: '*/*',
-    copyToCacheDirectory: true,
-    multiple: false,
-  });
-
-  if (result.canceled || !result.assets?.length) return null;
-  const asset = result.assets[0];
-
   try {
-    const dir = `${FileSystem.documentDirectory}pocketbinder_files/`;
-    await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
-    const dest = `${dir}${uid()}_${asset.name}`;
-    await FileSystem.copyAsync({ from: asset.uri, to: dest });
+    const result = await DocumentPicker.getDocumentAsync({
+      type: '*/*',
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+
+    if (result.canceled || !result.assets?.length) return null;
+    const asset = result.assets[0];
+
+    const safeFileName = asset.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const persistentUri = `${FileSystem.documentDirectory}${Date.now()}_${safeFileName}`;
+
+    // ROCKET FIX: Use JS native fetch() to stream the content:// or file:// URI into memory
+    const response = await fetch(asset.uri);
+    const blob = await response.blob();
+
+    // Convert Blob -> ArrayBuffer -> Base64 inside JavaScript
+    const base64Data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const res = reader.result as string;
+        // Strip data URL prefix if present (e.g. "data:application/pdf;base64,")
+        const base64 = res.includes(',') ? res.split(',')[1] : res;
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    // Write persistent copy directly into private app storage
+    await FileSystem.writeAsStringAsync(persistentUri, base64Data, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
 
     return {
       id: uid(),
       name: asset.name,
-      uri: dest,
-      mimeType: asset.mimeType,
+      uri: persistentUri,
+      mimeType: asset.mimeType || guessMimeType(asset.name),
       size: asset.size,
     };
   } catch (e) {
-    console.error('[fileOpen] failed to store file', e);
-    Alert.alert('Couldn\u2019t save file', 'Something went wrong while saving that file. Please try again.');
+    console.error('[fileOpen] Pick failed:', e);
+    Alert.alert('Upload Failed', 'Could not save the selected file to internal storage.');
     return null;
   }
 }
 
 export async function openStoredFile(file: FileItem): Promise<void> {
   try {
-    const info = await FileSystem.getInfoAsync(file.uri);
-    if (!info.exists) {
-      Alert.alert('File not found', 'This file may have been removed from device storage.');
+    const fileInfo = await FileSystem.getInfoAsync(file.uri);
+    if (!fileInfo.exists) {
+      Alert.alert(
+        'File Missing',
+        'This file reference is broken or deleted. Please remove and re-upload it.'
+      );
       return;
     }
 
-    const available = await Sharing.isAvailableAsync();
-    if (!available) {
-      Alert.alert('Can\u2019t open file', 'Sharing/opening files isn\u2019t supported on this device.');
-      return;
-    }
+    const mime = file.mimeType || guessMimeType(file.name);
 
-    await Sharing.shareAsync(file.uri, {
-      mimeType: file.mimeType || guessMimeType(file.name),
-      dialogTitle: file.name,
-      UTI: Platform.OS === 'ios' ? undefined : undefined,
-    });
+    if (Platform.OS === 'android') {
+      // Get Android FileProvider content:// URI for our saved persistent file
+      const contentUri = await FileSystem.getContentUriAsync(file.uri);
+
+      // Open via Android Intent
+      await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+        data: contentUri,
+        flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+        type: mime,
+      });
+    } else {
+      await Sharing.shareAsync(file.uri, {
+        mimeType: mime,
+        dialogTitle: file.name,
+      });
+    }
   } catch (e) {
-    console.error('[fileOpen] failed to open file', e);
+    console.error('[fileOpen] Open failed:', e);
     Alert.alert(
-      'No app found',
-      'There\u2019s no app installed on this device that can open this file type.'
+      'No App Found',
+      'No compatible app is installed to open this file format.'
     );
   }
 }

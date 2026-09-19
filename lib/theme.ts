@@ -4,7 +4,7 @@
 // offset "sticker" shadows instead of flat iOS-style cards.
 
 export const COLORS = {
-  bg: '#FFF7EC',
+  bg: '#faf6f1',
   surface: '#FFFFFF',
   surfaceAlt: '#FFF1DE',
 
@@ -14,7 +14,7 @@ export const COLORS = {
 
   primary: '#FF5C7A',
   primaryDark: '#E64467',
-  primarySoft: '#FFE1E8',
+  primarySoft: '#fef3f5',
 
   secondary: '#5B6EE8',
   secondarySoft: '#E3E7FE',

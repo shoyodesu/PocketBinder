@@ -118,7 +118,31 @@ If you don't have an `android/` folder yet (i.e. you've only been using
 8. `lib/hooks.ts` (`useLiveData`) keeps every screen in sync: it reloads on focus **and** instantly whenever any other mounted screen changes the same data, so there's no manual refresh needed after any add/edit/delete.
 9. See below.
 
-## 6. Other things to do outside the code
+## 7. Round 2 — fixes after first real-device testing
+
+A lot of this round was restoring functionality that shouldn't have been dropped in the first rebuild, plus fixing genuine new bugs (including two caused by Expo SDK 54 deprecating parts of `expo-file-system`).
+
+**Regressions restored:**
+- **Home to-do list** — to-dos are now a real global list again (`lib/storage.ts` → `TodosStore`, `@pocketbinder_todos`), not nested inside each course. Home has the status filter dropdown back (All / Upcoming / Missed / Completed) and its own "add to-do" button, with an optional "fill from a course" picker.
+- **Course profile photo** — restored on the course detail page (tap the circle avatar at the top) and shown as the course's badge image in the Courses list.
+- **Course detail tabs** — To-dos / Files / Links are now three tabs instead of one long stacked scroll.
+- **Calendar → link to a course** — restored as an optional field on Add/Edit Event.
+- **Calendar → view all upcoming** — restored as a "See all upcoming" link in the header that opens a full list of every future event, not just the selected day.
+
+**Real bugs fixed:**
+- **File upload/read crash** — `expo-file-system`'s root import deprecated `copyAsync`/`writeAsStringAsync` in SDK 54 and they now throw instead of just warning. Both `lib/fileOpen.ts` and `app/settings.tsx` now import from `expo-file-system/legacy`, which keeps the classic API working. No new package needed — it's the same `expo-file-system` you already have, just a different import path.
+- **Links not opening** (`Could not open URL 'cvsu.edu.ph'`) — Android requires a full scheme. `lib/links.ts` now normalizes any saved URL to include `https://` if missing, both when a link is saved and defensively again when opened.
+- **`ImagePicker.MediaTypeOptions` deprecation warning** — switched to the new `mediaTypes: ['images']` array syntax everywhere `expo-image-picker` is used.
+- **Time picker didn't scroll** — the original wheel-style `FlatList` picker was replaced with a plain up/down stepper (tap to increment/decrement hour and minute, AM/PM toggle). Less fancy, but it actually works reliably, which matters more.
+- **Birthday picker unusable for old dates** — `DateField` now has a "tap the month/year label" quick year-jump grid, instead of requiring dozens of taps on the month arrow to reach e.g. 2000.
+- **Accent color did nothing** — the color was being saved but nothing ever read it. Added `lib/AccentContext.tsx`, a small React context that loads the saved accent and updates live the moment Settings is saved; `Button`, `FAB`, `SelectField`, `SwitchRow`, the tab bar, and every "+" icon now pull from it instead of a hardcoded color.
+- **"Week starts on Monday" did nothing** — now actually threaded through: the Calendar screen's `firstDay` prop, the custom date picker's day grid/header, and the new Schedule weekly grid's column order all respect it.
+- **Oversized Preferences card** — `Card` now accepts a `compact` prop for sections that only hold one row.
+
+**Schedule page rebuilt as a real weekly grid** — `app/schedule.tsx` is now a spreadsheet-style timetable: a fixed time-label column down the left, day columns across the top (in Sun–Sat or Mon–Sun order per your week-start setting), and each class rendered as a colored block sized to its actual time span. Tap a block to edit, long-press to delete. The course-autofill logic inside the Add/Edit Schedule form is unchanged from before — only the surrounding page layout changed.
+
+No new npm packages are required for this round — everything is a code/import fix on packages you already installed.
+
 
 - **Test on a real device or emulator after installing the new packages** — `expo-image-picker` needs a rebuild (`npx expo run:android` or a new dev client), not just a Metro reload, since it's a native module.
 - **Android permissions:** `expo-image-picker` will prompt for photo library access automatically; no manifest changes needed with the Expo config plugin, but double check `android/app/src/main/AndroidManifest.xml` after prebuild if you've hand-edited it before.

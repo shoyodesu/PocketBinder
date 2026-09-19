@@ -13,7 +13,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { CARD_SHADOW, COLORS, FONT, RADIUS, SPACING, STICKER_SHADOW } from '../lib/theme';
+import { COLORS, FONT, RADIUS, SPACING, STICKER_SHADOW, CARD_SHADOW } from '../lib/theme';
+import { useAccent } from '../lib/AccentContext';
 
 // --- Button ------------------------------------------------------------
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -33,12 +34,13 @@ export function Button({
   disabled?: boolean;
   full?: boolean;
 }) {
+  const accent = useAccent();
   const bg =
-    variant === 'primary' ? COLORS.primary
+    variant === 'primary' ? accent
     : variant === 'danger' ? COLORS.danger
     : variant === 'secondary' ? COLORS.surface
     : 'transparent';
-  const textColor = variant === 'ghost' ? COLORS.primary : variant === 'secondary' ? COLORS.text : '#FFF';
+  const textColor = variant === 'ghost' ? accent : variant === 'secondary' ? COLORS.text : '#FFF';
   const border = variant === 'secondary' ? { borderWidth: 1.5, borderColor: COLORS.border } : null;
 
   return (
@@ -81,8 +83,8 @@ export function IconButton({
 }
 
 // --- Card / layout -------------------------------------------------------
-export function Card({ children, style }: { children: React.ReactNode; style?: any }) {
-  return <View style={[styles.card, CARD_SHADOW, style]}>{children}</View>;
+export function Card({ children, style, compact }: { children: React.ReactNode; style?: any; compact?: boolean }) {
+  return <View style={[styles.card, CARD_SHADOW, compact && { padding: SPACING.md }, style]}>{children}</View>;
 }
 
 export function ScreenHeader({ title, subtitle, right }: { title: string; subtitle?: string; right?: React.ReactNode }) {
@@ -106,8 +108,9 @@ export function Divider() {
 }
 
 export function FAB({ onPress, icon = 'add' }: { onPress: () => void; icon?: keyof typeof Ionicons.glyphMap }) {
+  const accent = useAccent();
   return (
-    <TouchableOpacity style={[styles.fab, STICKER_SHADOW]} onPress={onPress} activeOpacity={0.85}>
+    <TouchableOpacity style={[styles.fab, STICKER_SHADOW, { backgroundColor: accent }]} onPress={onPress} activeOpacity={0.85}>
       <Ionicons name={icon} size={26} color="#FFF" />
     </TouchableOpacity>
   );
@@ -154,14 +157,15 @@ export function SwitchRow({
   value: boolean;
   onChange: (v: boolean) => void;
 }) {
+  const accent = useAccent();
   return (
     <View style={styles.switchRow}>
       <Text style={FONT.body}>{label}</Text>
       <Switch
         value={value}
         onValueChange={onChange}
-        trackColor={{ false: COLORS.border, true: COLORS.primarySoft }}
-        thumbColor={value ? COLORS.primary : '#FFF'}
+        trackColor={{ false: COLORS.border, true: accent + '55' }}
+        thumbColor={value ? accent : '#FFF'}
       />
     </View>
   );
@@ -176,6 +180,7 @@ export function SelectField<T extends string>({
   options,
   onSelect,
   optional,
+  compact,
 }: {
   label: string;
   value: T | '';
@@ -183,9 +188,45 @@ export function SelectField<T extends string>({
   options: { label: string; value: T }[];
   onSelect: (v: T) => void;
   optional?: boolean;
+  compact?: boolean; // inline pill, no field label, auto width — for header dropdowns
 }) {
   const [open, setOpen] = React.useState(false);
+  const accent = useAccent();
   const current = options.find((o) => o.value === value);
+
+  if (compact) {
+    return (
+      <View>
+        <TouchableOpacity style={styles.pillSelect} onPress={() => setOpen(true)} activeOpacity={0.7}>
+          <Text style={[FONT.h3, { fontSize: 13, color: COLORS.text }]}>{current ? current.label : placeholder}</Text>
+          <Ionicons name="chevron-down" size={14} color={COLORS.textMuted} style={{ marginLeft: 4 }} />
+        </TouchableOpacity>
+        <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+          <Pressable style={styles.modalOverlay} onPress={() => setOpen(false)}>
+            <Pressable style={styles.selectSheet} onPress={(e) => e.stopPropagation()}>
+              <Text style={[FONT.h3, { marginBottom: 10 }]}>{label}</Text>
+              <FlatList
+                data={options}
+                keyExtractor={(item) => item.value}
+                style={{ maxHeight: 320 }}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.selectOption}
+                    onPress={() => { onSelect(item.value); setOpen(false); }}
+                  >
+                    <Text style={FONT.body}>{item.label}</Text>
+                    {item.value === value && <Ionicons name="checkmark" size={18} color={accent} />}
+                  </TouchableOpacity>
+                )}
+                ItemSeparatorComponent={Divider}
+              />
+            </Pressable>
+          </Pressable>
+        </Modal>
+      </View>
+    );
+  }
+
   return (
     <View>
       <FieldLabel optional={optional}>{label}</FieldLabel>
@@ -212,7 +253,7 @@ export function SelectField<T extends string>({
                   }}
                 >
                   <Text style={FONT.body}>{item.label}</Text>
-                  {item.value === value && <Ionicons name="checkmark" size={18} color={COLORS.primary} />}
+                  {item.value === value && <Ionicons name="checkmark" size={18} color={accent} />}
                 </TouchableOpacity>
               )}
               ItemSeparatorComponent={Divider}
@@ -342,11 +383,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  pillSelect: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: RADIUS.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    alignSelf: 'flex-start',
+  },
   switchRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 4,
   },
   modalOverlay: {
     flex: 1,

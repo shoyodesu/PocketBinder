@@ -1,6 +1,7 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { StoreKey, subscribe } from './storage';
+import { SettingsStore, StoreKey, subscribe } from './storage';
+import { UserSettings, WEEKDAYS, Weekday } from './types';
 
 /**
  * Keeps a screen's local copy of a store in sync automatically:
@@ -33,4 +34,20 @@ export function useLiveData<T>(key: StoreKey, loader: () => Promise<T>, initial:
   }, [key, reload]);
 
   return { data, setData, loading, reload };
+}
+
+const DEFAULT_SETTINGS: UserSettings = { username: 'Student', accentColor: '#FF5C7A', weekStartsMonday: false };
+
+// Centralizes the settings read so every screen that cares about
+// weekStartsMonday / accentColor reacts the same way, instead of each
+// screen guessing at its own default.
+export function useSettings() {
+  return useLiveData('settings', SettingsStore.get, DEFAULT_SETTINGS);
+}
+
+// Returns the 7 weekdays in display order, honoring the
+// "week starts on Monday" preference.
+export function orderedWeekdays(weekStartsMonday: boolean): Weekday[] {
+  if (!weekStartsMonday) return [...WEEKDAYS];
+  return [...WEEKDAYS.slice(1), WEEKDAYS[0]];
 }

@@ -1,7 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ConfirmModal } from '../components/Modals';
 import { Button, Card, ColorSwatchPicker, FieldLabel, ScreenHeader, SectionLabel, SwitchRow, TextField } from '../components/UI';
@@ -80,11 +80,12 @@ export default function SettingsScreen() {
         </Card>
 
         <SectionLabel>PREFERENCES</SectionLabel>
-        <Card>
+        <Card compact>
           <SwitchRow label="Week starts on Monday" value={draft.weekStartsMonday} onChange={(v) => setDraft({ ...draft, weekStartsMonday: v })} />
+          <Button label="Save Preferences" onPress={save} full />
         </Card>
 
-        <Button label="Save Preferences" onPress={save} full />
+
 
         <SectionLabel>BACKUP</SectionLabel>
         <Card>
@@ -112,7 +113,7 @@ export default function SettingsScreen() {
         <SectionLabel>ABOUT</SectionLabel>
         <Card>
           <Text style={FONT.body}>PocketBinder</Text>
-          <Text style={FONT.bodyMuted}>Version 1.0.0</Text>
+          <Text style={FONT.bodyMuted}>Version 2.0.0</Text>
         </Card>
       </View>
 

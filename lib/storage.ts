@@ -4,6 +4,7 @@ import {
   CourseItem,
   ScheduleItem,
   StudentIdData,
+  TodoItem,
   UserSettings,
 } from './types';
 
@@ -20,6 +21,7 @@ const KEYS = {
   courses: '@pocketbinder_courses',
   events: '@pocketbinder_events',
   schedules: '@pocketbinder_schedules',
+  todos: '@pocketbinder_todos',
   studentId: '@pocketbinder_student_id',
   settings: '@pocketbinder_settings',
 } as const;
@@ -89,6 +91,7 @@ function createListStore<T extends { id: string }>(key: StoreKey) {
 export const CoursesStore = createListStore<CourseItem>('courses');
 export const EventsStore = createListStore<CalendarEvent>('events');
 export const SchedulesStore = createListStore<ScheduleItem>('schedules');
+export const TodosStore = createListStore<TodoItem>('todos');
 
 // --- single-object stores (student ID card, settings) ----------------------
 const DEFAULT_ID: StudentIdData = {
