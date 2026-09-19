@@ -9,7 +9,7 @@ dist/
 web-build/
 expo-env.d.ts
 
-# Native
+# Native build artifacts & outputs (Keep native code, ignore build outputs)
 .kotlin/
 *.orig.*
 *.jks
@@ -17,6 +17,10 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+android/app/build/
+android/.gradle/
+android/local.properties
+android/.cxx/
 
 # Metro
 .metro-health-check*
@@ -36,6 +40,6 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-# generated native folders
-/ios
-/android
+# Track native directory (Do not ignore /android so build.gradle is tracked)
+# /ios
+# /android
